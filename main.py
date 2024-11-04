@@ -1,63 +1,91 @@
 import requests
 from bs4 import BeautifulSoup
 
-def znajdz_artykuly():
-    kategoria = input("Wprowadź kategorię: ")
-    adres_url = "https://pl.wikipedia.org/wiki/Kategoria:" + kategoria.replace(' ', '_')
-    odpowiedz = requests.get(adres_url)
+def search():
+    category_name = input()
+    wiki_url = "https://pl.wikipedia.org/wiki/Kategoria:" + category_name.replace(' ', '_')
+    response = requests.get(wiki_url)
 
-    if odpowiedz.status_code == 200:
-        parser_html = BeautifulSoup(odpowiedz.text, "html.parser")
-        sekcja_strony = parser_html.find("div", id="mw-pages")
+    if response.status_code == 200:
+        page = BeautifulSoup(response.text, "html.parser")
+        pages_div = page.find("div", id="mw-pages")
 
-        if sekcja_strony:
-            artykuly = [
-                {"link": link["href"], "nazwa": link["title"]}
-                for link in sekcja_strony.find_all("a") if "title" in link.attrs
+        if pages_div:
+            wiki_articles = [
+                {
+                    "url": link["href"], 
+                    "title": link["title"]
+                }
+                for link in pages_div.find_all("a") 
+                if "title" in link.attrs
             ]
 
-            for indeks, artykul in enumerate(artykuly[:2]):
-                pelny_link_artykulu = "https://pl.wikipedia.org" + artykul["link"]
-                odpowiedz_artykul = requests.get(pelny_link_artykulu)
-                parser_artykul = BeautifulSoup(odpowiedz_artykul.text, "html.parser")
+            for i in range(2):
+                if i < len(wiki_articles):
+                    current_article = wiki_articles[i]
+                    full_url = "https://pl.wikipedia.org" + current_article["url"]
+                    article_response = requests.get(full_url)
+                    article_page = BeautifulSoup(article_response.text, "html.parser")
 
-                naglowki = parser_artykul.find('div', id='mw-content-text')
-                podtytuly = []
-                if naglowki:
-                    linki_wewn = naglowki.select('a:not(.extiw)')
-                    podtytuly = [l.get('title') for l in linki_wewn if l.get('title') and l.get_text(strip=True)]
-                    podtytuly = list(dict.fromkeys(podtytuly))[:5]
+                    content = article_page.find('div', {'id': 'mw-content-text'})
+                    article_titles = []
+                    
+                    if content:
+                        link_tags = content.select('a:not(.extiw)')
+                        article_titles = [
+                            link.get('title') 
+                            for link in link_tags 
+                            if link.get('title') and link.get_text(strip=True)
+                        ]
+                        article_titles = list(dict.fromkeys(article_titles))[:5]
 
-                sekcja_tresci = parser_artykul.find("div", class_="mw-content-ltr mw-parser-output")
-                obrazy = []
-                if sekcja_tresci:
-                    obrazy = [img["src"] for img in sekcja_tresci.find_all("img", src=True)[:3]]
+                    content_div = article_page.find("div", {"class": "mw-content-ltr mw-parser-output"})
+                    image_urls = []
+                    
+                    if content_div:
+                        img_tags = content_div.find_all("img", src=True)
+                        image_urls = [img["src"] for img in img_tags[:3]]
 
-                przypisy = parser_artykul.find("ol", class_="references")
-                odniesienia = []
-                if przypisy:
-                    odniesienia = [link.get('href') for link in przypisy.find_all('a', class_='external text') if link.get('href')]
+                    refs_div = article_page.find("ol", {"class": "references"})
+                    reference_urls = []
+                    
+                    if refs_div:
+                        ref_links = refs_div.find_all('a', class_='external text')
+                        reference_urls.extend([
+                            link.get('href') 
+                            for link in ref_links 
+                            if link.get('href')
+                        ])
 
-                przypisy_tekstowe = parser_artykul.find_all("li", id=lambda x: x and x.startswith("cite"))
-                for przypis in przypisy_tekstowe:
-                    link = przypis.find('a', class_='external text')
-                    if link and link.get('href'):
-                        odniesienia.append(link.get('href'))
+                    citations = article_page.find_all("li", {"id": lambda x: x and x.startswith("cite")})
+                    for citation in citations:
+                        ref_link = citation.find('a', class_='external text')
+                        if ref_link and ref_link.get('href'):
+                            reference_urls.append(ref_link.get('href'))
 
-                odniesienia = list(dict.fromkeys(odniesienia))[:3]
-                odniesienia = [url.replace("&", "&amp;") for url in odniesienia]
+                    reference_urls = list(dict.fromkeys(reference_urls))[:3]
+                    reference_urls = [url.replace("&", "&amp;") for url in reference_urls]
 
-                kategorie_sekcja = parser_artykul.find("div", id="mw-normal-catlinks")
-                kategorie = [kat.get_text() for kat in kategorie_sekcja.find_all("a")[1:4]] if kategorie_sekcja else []
+                    categories_div = article_page.find("div", {"id": "mw-normal-catlinks"})
+                    category_names = []
+                    
+                    if categories_div:
+                        category_links = categories_div.find_all("a")
+                        category_names = [cat.get_text() for cat in category_links[1:4]]
 
-                print("Tytuły:", " | ".join(podtytuly) if podtytuly else "Brak")
-                print("Obrazy:", " | ".join(obrazy) if obrazy else "Brak")
-                print("Odniesienia:", " | ".join(odniesienia) if odniesienia else "Brak")
-                print("Kategorie:", " | ".join(kategorie) if kategorie else "Brak")
+                    titles_output = " | ".join(article_titles) if article_titles else ""
+                    images_output = " | ".join(image_urls) if image_urls else ""
+                    refs_output = " | ".join(reference_urls) if reference_urls else ""
+                    cats_output = " | ".join(category_names) if category_names else ""
+
+                    print(titles_output)
+                    print(images_output)
+                    print(refs_output)
+                    print(cats_output)
         else:
-            print("Brak stron w wybranej kategorii.")
+            print("Nie znaleziono stron w tej kategorii.")
     else:
-        print(f"Błąd połączenia: kod {odpowiedz.status_code}")
+        print(f"Kod statusu: {response.status_code}")
 
 if __name__ == "__main__":
-    znajdz_artykuly()
+    search()
